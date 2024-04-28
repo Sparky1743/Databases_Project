@@ -92,10 +92,22 @@
       document
         .getElementById("reviewSubmissionForm")
         .addEventListener("submit", function (event) {
-          // Form submission is intercepted here
-          // You can add code to send the form data to the server if needed
-          // After submission, go back to the previous page
-          window.history.back();
+          // Prevent form submission if fields are empty
+          var review = document
+            .getElementById("restaurant-review")
+            .value.trim();
+          var rating = document.getElementById("item-rating").value.trim();
+
+          if (review === "" || rating === "") {
+            // Display an alert if any field is empty
+            alert("Please fill in all fields.");
+            event.preventDefault(); // Prevent form submission
+          } else {
+            // If fields are not empty, form will be submitted
+            // You can add code here to send the form data to the server if needed
+            // After submission, go back to the previous page
+            window.history.back();
+          }
         });
 
       function goBack() {

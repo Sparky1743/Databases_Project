@@ -141,7 +141,11 @@
                 />
               </div>
               <div class="col-md-4">
-                <button class="btn btn-outline-primary" type="submit">
+                <button
+                  class="btn btn-outline-primary"
+                  type="submit"
+                  onclick="setRenameColumnPressed()"
+                >
                   Rename Column Name
                 </button>
               </div>
@@ -153,7 +157,16 @@
 
     <script>
       function goBack() {
-        window.history.back();
+        if (localStorage.getItem("renameColumnPressed") === "true") {
+          localStorage.removeItem("renameColumnPressed");
+          window.location.href = "/"; // Replace "home.html" with the actual URL of your home page
+        } else {
+          window.history.back();
+        }
+      }
+
+      function setRenameColumnPressed() {
+        localStorage.setItem("renameColumnPressed", "true");
       }
     </script>
   </body>
