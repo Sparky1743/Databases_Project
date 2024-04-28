@@ -1,5 +1,7 @@
 from curses import flash
 from datetime import datetime, timedelta
+import logging
+from flask_apscheduler import APScheduler
 import json
 import time
 import MySQLdb
@@ -11,6 +13,7 @@ from functools import wraps
 # import MySQLdb
 
 app = Flask(__name__,static_url_path="/static")
+scheduler = APScheduler()
 app.secret_key = "client id"
 app.config['MYSQL_HOST'] = 'localhost'
 app.config['MYSQL_USER'] = 'root'
@@ -626,13 +629,18 @@ def ordersummary():
     cursor.execute('select max(payment_id) from Payment;')
     payment_ID = cursor.fetchone()
     payment_ID = str(int(payment_ID[0]) + 1)
-    cursor.execute('select max(agent_id) from delivery_agent')
-    num_delivery_agents = cursor.fetchone()
-    agent_id = random.randint(1, int(num_delivery_agents[0]))
+    # cursor.execute('select max(agent_id) from delivery_agent')
+    # num_delivery_agents = cursor.fetchone()
+    # agent_id = random.randint(1, int(num_delivery_agents[0]))
+    cursor.execute('SELECT agent_id FROM delivery_agent WHERE availability = 1 ORDER BY RAND() LIMIT 1;')
+    agent_id = cursor.fetchone()
+    agent_id = int(agent_id[0])
+    reviews = ["Friendly delivery person", "Great experience", "polite and efficient", "N/A", "Satisfactory Service"]
+    random_review = random.choice(reviews)
     cursor.execute('update restaurant set balance_earned = balance_earned + %s/10 where restaurant_id = %s;', (amount,rest_id))
     cursor.execute('insert into payment (payment_id, payment_method, payment_status, amount, time) values (%s, %s, %s, %s, %s);', (payment_ID, payment_method, payment_status, amount, placed_time))
     cursor.execute('insert into orders (order_id, customer_id,restaurant_id, payment_id, order_status, placed_time, amount) values (%s, %s,%s, %s, %s, %s, %s);', (order_ID, customer_id,rest_id, payment_ID, order_status, placed_time, amount))
-    cursor.execute('insert into delivery (order_id, agent_id,customer_id, restaurant_id, delivery_review, delivery_rating, delivery_charges, pickup_time, delivery_time, delivery_status,tip) values (%s, %s,%s, %s, %s, %s, %s,%s, %s,%s, %s);', (order_ID,agent_id, customer_id,rest_id, "", random.randint(1, 5), random.randint(1, 9),datetime.now(),datetime.now()+timedelta(minutes=30),"Placed",random.randint(1, 5)))
+    cursor.execute('insert into delivery (order_id, agent_id,customer_id, restaurant_id, delivery_review, delivery_rating, delivery_charges, pickup_time, delivery_time, delivery_status,tip) values (%s, %s,%s, %s, %s, %s, %s,%s, %s,%s, %s);', (order_ID,agent_id, customer_id,rest_id, random_review, random.randint(1, 5), random.randint(1, 9),datetime.now() + timedelta(minutes=30),datetime.now()+timedelta(minutes=60),"Placed",random.randint(1, 5)))
     # ordered_items is list of dictionaries where each dictionary contains item_id, item_quantity, notes, item_price
     for item in ordered_items:
         item_ID = item["item_id"]
@@ -649,6 +657,27 @@ def ordersummary():
     cursor.close()
     # flash("Order successfully submitted.")
     return redirect(url_for('userdetails'))
+
+def update_delivery_status():
+    app.logger.info("Scheduler: Update delivery status job started.")
+    try:
+        with app.app_context():
+            cursor = mysql.connection.cursor()
+            cursor.execute("SELECT order_id, pickup_time, delivery_time FROM Delivery WHERE delivery_status = 'Placed' OR delivery_status = 'On the way';")
+            orders = cursor.fetchall()
+            current_time = datetime.now()
+            for order in orders:
+                order_id, pickup_time, delivery_time = order
+                if current_time > pickup_time:
+                    cursor.execute("UPDATE Delivery SET delivery_status = 'On the way' WHERE order_id = %s;", (order_id,))
+                if current_time > delivery_time:
+                    cursor.execute("UPDATE Delivery SET delivery_status = 'Delivered' WHERE order_id = %s;", (order_id,))
+                    cursor.execute("UPDATE Orders SET order_status = 'Delivered' WHERE order_id = %s;", (order_id,))
+            mysql.connection.commit()
+            cursor.close()
+        app.logger.info("Scheduler: Update delivery status job completed successfully.")
+    except Exception as e:
+        app.logger.error(f"Scheduler: Error in update delivery status job: {str(e)}")
 
 @app.route('/delivery_dashboard', methods=['GET', 'POST'])
 @login_agent
@@ -747,4 +776,6 @@ def aboutus():
     return render_template('aboutus.html',tablename=tablename, table = table, student_details= student_details)
 
 if __name__ == '__main__':
+    scheduler.add_job(id='update_delivery_status', func=update_delivery_status, trigger='interval', seconds=60)
+    scheduler.start()
     app.run(debug=True)
